@@ -13,7 +13,6 @@
 DESTDIR = /usr/local
 
 # set the compiler to use
-CC = gcc
 
 SVNDEV := -D'SVN_REV="$(shell svnversion -c .)"'
 CFLAGS += $(SVNDEV)
@@ -33,20 +32,21 @@ APP_BINARY = mjpg_streamer
 
 # define the names and targets of the plugins
 PLUGINS = input_uvc.so
-PLUGINS += output_file.so
+#PLUGINS += output_file.so
 #PLUGINS += output_udp.so
 PLUGINS += output_http.so
 #PLUGINS += input_testpicture.so
 #PLUGINS += output_autofocus.so
-#PLUGINS += input_file.so
+PLUGINS += input_file.so
+PLUGINS += input_fifo.so
 # PLUGINS += input_pylon.so
 # PLUGINS += input_megatec.so
 # PLUGINS += output_mars2020.so
-PLUGINS += output_rtsp.so
+#PLUGINS += output_rtsp.so
 # PLUGINS += input_ptp2.so # commented out because it depends on libgphoto
 #PLUGINS += input_http.so 
 # PLUGINS += output_viewer.so # commented out because it depends on SDL
-PLUGINS += input_raspicam.so
+###PLUGINS += input_raspicam.so
 
 # define the names of object files
 OBJECTS=mjpg_streamer.o utils.o
@@ -108,6 +108,10 @@ output_mars2020.so: mjpg_streamer.h utils.h
 input_file.so:
 	make -C plugins/input_file all
 	cp plugins/input_file/input_file.so .
+
+input_fifo.so:
+	make -C plugins/input_fifo all
+	cp plugins/input_fifo/input_fifo.so .
 
 output_rtsp.so: mjpg_streamer.h utils.h
 	make -C plugins/output_rtsp all

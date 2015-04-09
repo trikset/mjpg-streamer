@@ -139,8 +139,7 @@ int input_init(input_parameter *param, int id)
     while(1) {
         int option_index = 0, c = 0;
         static struct option long_options[] = {
-            {"h", no_argument, 0, 0
-            },
+            {"h", no_argument, 0, 0},
             {"help", no_argument, 0, 0},
             {"d", required_argument, 0, 0},
             {"device", required_argument, 0, 0},

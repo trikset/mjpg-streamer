@@ -1,23 +1,24 @@
 ###############################################################
 #
-# Purpose: Makefile for "M-JPEG Streamer"
-# Author.: Tom Stoeveken (TST)
+# Purpose: Makefile for "M-JPEG Streamer" fifo plugin
+# Author.: Soldatov Dmitry
 # Version: 0.3
 # License: GPL
 #
 ###############################################################
 
 
+
 OTHER_HEADERS = ../../mjpg_streamer.h ../../utils.h ../output.h ../input.h
 
-CFLAGS += -O2 -DLINUX -D_GNU_SOURCE -Wall -shared -fPIC
-CFLAGS += -DDEBUG -g
-LFLAGS += -lpthread -ldl
+CFLAGS += -O -g -DLINUX -D_GNU_SOURCE -Wall -shared -fPIC
+#CFLAGS += -DDEBUG
+LFLAGS += 
 
-all: output_file.so
+all: input_fifo.so
 
 clean:
 	rm -f *.a *.o core *~ *.so *.lo
 
-output_file.so: $(OTHER_HEADERS) output_file.c
-	$(CC) $(CFLAGS) -o $@ output_file.c
+input_fifo.so: $(OTHER_HEADERS) input_fifo.c
+	$(CC) $(CFLAGS) $(LFLAGS) -o $@ input_fifo.c

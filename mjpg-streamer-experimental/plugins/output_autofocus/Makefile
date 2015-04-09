@@ -7,7 +7,6 @@
 #
 ###############################################################
 
-CC = gcc
 
 OTHER_HEADERS = ../../mjpg_streamer.h ../../utils.h ../output.h ../input.h
 
