@@ -268,8 +268,6 @@ void *worker_thread(void *arg)
       while(NULL != (frame_delim1 = (char*)memmem(head, fifo_buffer_used - (head - fifo_buffer), frame_delim, frame_delim_size))) {
         frame_size = frame_delim1 - head;
         
-        fprintf(stderr, "frame size: %d\n", frame_size);
-
         if(frame_size != 0) {
 
           /* copy frame from file to global buffer */
@@ -297,7 +295,6 @@ void *worker_thread(void *arg)
 
       }
 
-      DBG("frame cnt: %d\n",frame_cnt);
       fifo_buffer_used -= (head - fifo_buffer);
       memmove(fifo_buffer, head, fifo_buffer_used);
     }
