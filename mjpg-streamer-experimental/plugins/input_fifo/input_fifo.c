@@ -158,7 +158,7 @@ int input_init(input_parameter *param, int id)
     //TODO: WARNING ABOUT DEFAULTS
     
     IPRINT("forced delay......: %i\n", delay);
-    IPRINT("frame delim...: %s\n", frame_delim);
+    IPRINT("frame delimeter...: %s\n", frame_delim);
     IPRINT("fifoname is.......: %s\n", fifoname);
 
     param->global->in[id].name = malloc((strlen(INPUT_PLUGIN_NAME) + 1) * sizeof(char));
@@ -268,7 +268,7 @@ void *worker_thread(void *arg)
       while(NULL != (frame_delim1 = (char*)memmem(head, fifo_buffer_used - (head - fifo_buffer), frame_delim, frame_delim_size))) {
         frame_size = frame_delim1 - head;
         
-        DBG("frame size: %d\n", frame_size);
+        fprintf(stderr, "frame size: %d\n", frame_size);
 
         if(frame_size != 0) {
 
@@ -276,7 +276,8 @@ void *worker_thread(void *arg)
           pthread_mutex_lock(&pglobal->in[plugin_number].db);
 
           pglobal->in[plugin_number].size = frame_size;
-          memcpy(pglobal->in[plugin_number].buf, head, frame_size);
+          //memcpy(pglobal->in[plugin_number].buf, head, frame_size);
+          pglobal->in[plugin_number].buf =  head;
           frame_cnt++;
           gettimeofday(&timestamp, NULL);
           pglobal->in[plugin_number].timestamp = timestamp;
