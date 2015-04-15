@@ -54,7 +54,7 @@ void help(void);
 
 static int delay = 20;
 
-static const char* fifoname_default = "/run/line-sensor.out.fifo";
+static const char* fifoname_default = "/run/mjpg-encoder.out.fifo";
 static const char* frame_delim_default = "c3f97bee765fd86b209951ead9f8a583";
 
 static char *fifoname = NULL;
