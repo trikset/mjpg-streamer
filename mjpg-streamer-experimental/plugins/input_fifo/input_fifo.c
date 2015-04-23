@@ -274,8 +274,8 @@ void *worker_thread(void *arg)
           pthread_mutex_lock(&pglobal->in[plugin_number].db);
 
           pglobal->in[plugin_number].size = frame_size;
-          //memcpy(pglobal->in[plugin_number].buf, head, frame_size);
-          pglobal->in[plugin_number].buf =  head;
+          memcpy(pglobal->in[plugin_number].buf, head, frame_size);
+          //pglobal->in[plugin_number].buf =  head;
           frame_cnt++;
           gettimeofday(&timestamp, NULL);
           pglobal->in[plugin_number].timestamp = timestamp;
