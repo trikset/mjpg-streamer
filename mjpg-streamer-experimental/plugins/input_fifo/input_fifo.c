@@ -202,19 +202,21 @@ void help(void)
                     " ---------------------------------------------------------------\n");
 }
 
+
 #define fifo_buffer_available() (fifo_buffer_size - fifo_buffer_used)
 /* the single writer thread */
 void *worker_thread(void *arg)
 {
     int frame_size;
-    int fifo_fd;
+    int fifo_fd = -1;
     struct timeval timestamp;
 
-//label
-    fifo_fd = open(fifoname, O_RDONLY);
-    if(fifo_fd == -1) {
-        perror("Could not open fifo for reading");
-        return NULL;
+    while(fifo_fd == -1) {
+      fifo_fd = open(fifoname, O_RDONLY);
+      if (fifo_fd < 0) {
+        fprintf(stderr, "reopen(%s) failed: %d\n", fifoname, errno);
+        sleep(1);
+      }
     }
 
     /* set cleanup handler to cleanup allocated ressources */
@@ -235,30 +237,29 @@ void *worker_thread(void *arg)
         if (read_res == 0)
           fprintf(stderr, "read(%d, %zu) eof\n", fifo_fd, fifo_buffer_available());
         else {
-          fprintf(stderr, "read(%d, %zu) failed: %d\n", fifo_fd, fifo_buffer_available(), read_res);
-          perror("");
-          
-          //reopen
-          if (fifo_fd != -1 && close(fifo_fd) != 0) {
-            int res = errno;
-            fprintf(stderr, "close() failed: %d\n", res);
-            fifo_fd = -1;
-            return NULL;
-          }
+          fprintf(stderr, "read(%d, %zu) failed: %d\n", fifo_fd, fifo_buffer_available(), errno);
+          perror("read failed");
+        }  
+        
+        if (fifo_fd != -1 && close(fifo_fd) != 0) {
+          int res = errno;
+          fprintf(stderr, "close(%s) failed: %d\n", fifoname, res);
+          return NULL;
+        }
+        fifo_fd = -1;
 
+        while(fifo_fd == -1) {
           fifo_fd = open(fifoname, O_RDONLY);
           if (fifo_fd < 0) {
             int res = errno;
-            fprintf(stderr, "open(%s) failed: %d\n", fifoname, res);
-            fifo_fd = -1;
-            return NULL;
+            fprintf(stderr, "reopen(%s) failed: %d\n", fifoname, res);
           }
-          
-          fifo_buffer_used = 0;    
-          fprintf(stderr,"reopened\n");
+          sleep(1);
         }
         
-        sleep(1);
+        fifo_buffer_used = 0;    
+        fprintf(stderr,"reopened %d %d\n",fifo_fd, read_res);
+       
         continue;
       }
 
@@ -275,7 +276,6 @@ void *worker_thread(void *arg)
 
           pglobal->in[plugin_number].size = frame_size;
           memcpy(pglobal->in[plugin_number].buf, head, frame_size);
-          //pglobal->in[plugin_number].buf =  head;
           frame_cnt++;
           gettimeofday(&timestamp, NULL);
           pglobal->in[plugin_number].timestamp = timestamp;
