@@ -215,7 +215,7 @@ void *worker_thread(void *arg)
       fifo_fd = open(fifoname, O_RDONLY);
       if (fifo_fd < 0) {
         fprintf(stderr, "reopen(%s) failed: %d\n", fifoname, errno);
-        sleep(1);
+        sleep(10);
       }
     }
 
@@ -254,7 +254,7 @@ void *worker_thread(void *arg)
             int res = errno;
             fprintf(stderr, "reopen(%s) failed: %d\n", fifoname, res);
           }
-          sleep(1);
+          sleep(10);
         }
         
         fifo_buffer_used = 0;    
