@@ -24,7 +24,6 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-#include <linux/videodev2.h>
 #include <sys/ioctl.h>
 #include <errno.h>
 #include <signal.h>
@@ -158,7 +157,7 @@ void *worker_thread(void *arg)
 }
 
 /******************************************************************************
-Description.: this functions cleans up allocated ressources
+Description.: this functions cleans up allocated resources
 Input Value.: arg is unused
 Return Value: -
 ******************************************************************************/

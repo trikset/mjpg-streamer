@@ -50,7 +50,7 @@ Description.: Display a help message
 Input Value.: argv[0] is the program name and the parameter progname
 Return Value: -
 ******************************************************************************/
-void help(char *progname)
+static void help(char *progname)
 {
     fprintf(stderr, "-----------------------------------------------------------------------\n");
     fprintf(stderr, "Usage: %s\n" \
@@ -90,9 +90,9 @@ Description.: pressing CTRL+C sends signals to this process instead of just
 Input Value.: sig tells us which signal was received
 Return Value: -
 ******************************************************************************/
-void signal_handler(int sig)
+static void signal_handler(int sig)
 {
-    int i, j;
+    int i;
 
     /* signal "stop" to threads */
     LOG("setting signal to stop\n");
@@ -154,7 +154,7 @@ void signal_handler(int sig)
     return;
 }
 
-int split_parameters(char *parameter_string, int *argc, char **argv)
+static int split_parameters(char *parameter_string, int *argc, char **argv)
 {
     int count = 1;
     argv[0] = NULL; // the plugin may set it to 'INPUT_PLUGIN_NAME'
@@ -203,56 +203,31 @@ int main(int argc, char *argv[])
 
     /* parameter parsing */
     while(1) {
-        int option_index = 0, c = 0;
+        int c = 0;
         static struct option long_options[] = {
-            {"h", no_argument, 0, 0
-            },
-            {"help", no_argument, 0, 0},
-            {"i", required_argument, 0, 0},
-            {"input", required_argument, 0, 0},
-            {"o", required_argument, 0, 0},
-            {"output", required_argument, 0, 0},
-            {"v", no_argument, 0, 0},
-            {"version", no_argument, 0, 0},
-            {"b", no_argument, 0, 0},
-            {"background", no_argument, 0, 0},
-            {0, 0, 0, 0}
+            {"help", no_argument, NULL, 'h'},
+            {"input", required_argument, NULL, 'i'},
+            {"output", required_argument, NULL, 'o'},
+            {"version", no_argument, NULL, 'v'},
+            {"background", no_argument, NULL, 'b'},
+            {NULL, 0, NULL, 0}
         };
 
-        c = getopt_long_only(argc, argv, "", long_options, &option_index);
+        c = getopt_long(argc, argv, "hi:o:vb", long_options, NULL);
 
         /* no more options to parse */
         if(c == -1) break;
 
-        /* unrecognized option */
-        if(c == '?') {
-            help(argv[0]);
-            return 0;
-        }
-
-        switch(option_index) {
-            /* h, help */
-        case 0:
-        case 1:
-            help(argv[0]);
-            return 0;
-            break;
-
-            /* i, input */
-        case 2:
-        case 3:
+        switch(c) {
+        case 'i':
             input[global.incnt++] = strdup(optarg);
             break;
 
-            /* o, output */
-        case 4:
-        case 5:
+        case 'o':
             output[global.outcnt++] = strdup(optarg);
             break;
 
-            /* v, version */
-        case 6:
-        case 7:
+        case 'v':
             printf("MJPG Streamer Version: %s\n" \
             "Compilation Date.....: %s\n" \
             "Compilation Time.....: %s\n",
@@ -265,12 +240,11 @@ int main(int argc, char *argv[])
             return 0;
             break;
 
-            /* b, background */
-        case 8:
-        case 9:
+        case 'b':
             daemon = 1;
             break;
 
+        case 'h': /* fall through */
         default:
             help(argv[0]);
             exit(EXIT_FAILURE);
@@ -329,6 +303,7 @@ int main(int argc, char *argv[])
 
         tmp = (size_t)(strchr(input[i], ' ') - input[i]);
         global.in[i].stop      = 0;
+        global.in[i].context   = NULL;
         global.in[i].buf       = NULL;
         global.in[i].size      = 0;
         global.in[i].plugin = (tmp > 0) ? strndup(input[i], tmp) : strdup(input[i]);

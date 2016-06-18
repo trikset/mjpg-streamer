@@ -464,6 +464,7 @@ void send_stream(cfd *context_fd, int input_number)
 
     DBG("preparing header\n");
     sprintf(buffer, "HTTP/1.0 200 OK\r\n" \
+            "Access-Control-Allow-Origin: *\r\n" \
             STD_HEADER \
             "Content-Type: multipart/x-mixed-replace;boundary=" BOUNDARY "\r\n" \
             "\r\n" \
@@ -1066,7 +1067,7 @@ void *client_thread(void *arg)
             query_suffixed = 0;
         }
         #endif
-	#ifdef WXP_COMPAT
+    #ifdef WXP_COMPAT
     } else if((strstr(buffer, "GET /cam") != NULL) && (strstr(buffer, ".jpg") != NULL)) {
         req.type = A_SNAPSHOT_WXP;
         query_suffixed = 255;
@@ -1078,7 +1079,18 @@ void *client_thread(void *arg)
             query_suffixed = 0;
         }
         #endif
-	#endif
+    #endif
+    } else if(strstr(buffer, "POST /stream") != NULL) {
+        req.type = A_STREAM;
+        query_suffixed = 255;
+        #ifdef MANAGMENT
+        if (check_client_status(lcfd.client)) {
+            req.type = A_UNKNOWN;
+            lcfd.client->last_take_time.tv_sec += piggy_fine;
+            send_error(lcfd.fd, 403, "frame already sent");
+            query_suffixed = 0;
+        }
+        #endif
     } else if(strstr(buffer, "GET /?action=stream") != NULL) {
         req.type = A_STREAM;
         query_suffixed = 255;
@@ -1090,7 +1102,7 @@ void *client_thread(void *arg)
             query_suffixed = 0;
         }
         #endif
-	#ifdef WXP_COMPAT
+    #ifdef WXP_COMPAT
     } else if((strstr(buffer, "GET /cam") != NULL) && (strstr(buffer, ".mjpg") != NULL)) {
         req.type = A_STREAM_WXP;
         query_suffixed = 255;
@@ -1102,7 +1114,7 @@ void *client_thread(void *arg)
             query_suffixed = 0;
         }
         #endif
-	#endif
+    #endif
     } else if(strstr(buffer, "GET /?action=take") != NULL) {
         int len;
         req.type = A_TAKE;
@@ -1256,9 +1268,9 @@ void *client_thread(void *arg)
             return NULL;
         }
 
-        if(strstr(buffer, "User-Agent: ") != NULL) {
+        if(strcasestr(buffer, "User-Agent: ") != NULL) {
             req.client = strdup(buffer + strlen("User-Agent: "));
-        } else if(strstr(buffer, "Authorization: Basic ") != NULL) {
+        } else if(strcasestr(buffer, "Authorization: Basic ") != NULL) {
             req.credentials = strdup(buffer + strlen("Authorization: Basic "));
             decodeBase64(req.credentials);
             DBG("username:password: %s\n", req.credentials);
@@ -1380,7 +1392,7 @@ void *client_thread(void *arg)
         }
 
         if (found == 0) {
-            DBG("FILE output plugin not loaded\n");
+            LOG("FILE CHANGE TEST output plugin not loaded\n");
             send_error(lcfd.fd, 404, "FILE output plugin not loaded, taking snapshot not possible");
         } else {
             if (ret == 0) {
@@ -1406,7 +1418,7 @@ void *client_thread(void *arg)
 }
 
 /******************************************************************************
-Description.: This function cleans up ressources allocated by the server_thread
+Description.: This function cleans up resources allocated by the server_thread
 Input Value.: arg is not used
 Return Value: -
 ******************************************************************************/
@@ -1415,7 +1427,7 @@ void server_cleanup(void *arg)
     context *pcontext = arg;
     int i;
 
-    OPRINT("cleaning up ressources allocated by server thread #%02d\n", pcontext->id);
+    OPRINT("cleaning up resources allocated by server thread #%02d\n", pcontext->id);
 
     for(i = 0; i < MAX_SD_LEN; i++)
         close(pcontext->sd[i]);
@@ -1444,7 +1456,7 @@ void *server_thread(void *arg)
     context *pcontext = arg;
     pglobal = pcontext->pglobal;
 
-    /* set cleanup handler to cleanup ressources */
+    /* set cleanup handler to cleanup resources */
     pthread_cleanup_push(server_cleanup, pcontext);
 
     bzero(&hints, sizeof(hints));
