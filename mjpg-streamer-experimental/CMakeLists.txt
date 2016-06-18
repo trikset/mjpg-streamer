@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 2.8.3)
-set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
 
 project("mjpg-streamer")
+
+set(CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake ${CMAKE_MODULE_PATH})
 
 # If the user doesn't manually specify a build type, use 'Release'
 if("${CMAKE_BUILD_TYPE}" STREQUAL "")
@@ -45,6 +46,7 @@ add_subdirectory(plugins/input_http)
 #add_subdirectory(plugins/input_raspicam)
 add_subdirectory(plugins/input_ptp2)
 add_subdirectory(plugins/input_uvc)
+add_subdirectory(plugins/input_fifo)
 
 #
 # Output plugins
@@ -55,7 +57,6 @@ add_subdirectory(plugins/output_http)
 add_subdirectory(plugins/output_rtsp)
 add_subdirectory(plugins/output_udp)
 add_subdirectory(plugins/output_viewer)
-
 #
 # mjpg_streamer executable
 #
