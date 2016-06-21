@@ -30,10 +30,12 @@ enviroment () {
 
 do_start() {
   enviroment
-  start-stop-daemon -Svbx $MJPG_STREAMER_NAME -- -i "input_fifo.so" -o "output_http.so -w /www"
+  $MJPG_STREAMER_NAME -i "input_fifo.so" -o "output_http.so -w /www" > /dev/null 2>&1 &
   sleep 1
   status $MJPG_STREAMER_NAME
-  exit $?
+  rc=$?
+  wait
+  exit $rc
 }
 
 do_stop() {
@@ -55,7 +57,7 @@ case $1 in
                 do_start
                 ;;
         status)
-                enviroment 
+                enviroment
                 status $MJPG_STREAMER_NAME
                 exit $?
                 ;;
@@ -65,4 +67,3 @@ case $1 in
         ;;
 esac
 exit 0
-
