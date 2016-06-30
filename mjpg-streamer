@@ -10,18 +10,23 @@
 # Short-Description: start App MJPG_STREAMER
 ### END INIT INFO
 
+
+DEFAULT_STREAMER_NAME=mjpg-streamer-ov7670.sh
+
 CURRENT_MJPG_STREAMER_NAME=current-mjpg-streamer
 CURRENT_MJPG_STREAMER_PATH=/etc/trik/$CURRENT_MJPG_STREAMER_NAME
 
 MJPG_STREAMER_NAME=$(basename $0)
-[ $MJPG_STREAMER_NAME==*.sh ] && MEDIA_SENSOR_NAME=${MEDIA_SENSOR_NAME%.*}
+[ $MJPG_STREAMER_NAME==*.sh ] && MJPG_STREAMER_NAME=${MJPG_STREAMER_NAME%.*}
 
-#MJPG_STREAMER_NAME=mjpg_streamer
 MJPG_STREAMER_PATH=/usr/bin
+NAME=mjpg_streamer
 MJPG_STREAMER_PRIORITY=-1
- 
+
 MJPG_STREAMER_PIDDIR=/var/run/
 MJPG_STREAMER_PID=$PIDDIR/$NAME.pid
+
+WWW_FILES_PATH=/usr/share/mjpg-streamer/www/
 
 . /etc/init.d/functions
 
@@ -33,44 +38,45 @@ enviroment () {
 }
 
 do_start() {
-    enviroment
-    echo -e "#!/bin/sh\n /etc/init.d/$MJPG_STREAMER_NAME $VARS reload" > $CURRENT_MJPG_STREAMER_PATH
-    killall -g CURRENT_MJPG_STREAMER_NAME
-    exit 0
+        enviroment
+        echo -e "#!/bin/sh\n /etc/init.d/$MJPG_STREAMER_NAME $VARS $VARS reload" > $CURRENT_MJPG_STREAMER_PATH
+        killall -g $CURRENT_MJPG_STREAMER_NAME
 }
 
 do_reload() {
-    enviroment
-    case $MJPG_STREAMER_NAME in
-        *-ov7670)
-            mjpg_streamer -i "input_fifo.so" -o "output_http.so -w /www" > /dev/null 2>&1 &
-            sleep 1
-            status mjpg_streamer
-            rc=$?
-            wait
-            exit $rc
-            ;;
-        *-webcam)
-            mjpg_streamer -i "input_uvc.so -d /dev/video2 -r 432x240 -f 30" -o "output_http.so -w /www" > /dev/null 2>&1 &
-            sleep 1
-            status mjpg_streamer
-            rc=$?
-            wait
-            exit $rc
-            ;;
-        *)
-            log "unknown mjpg streamer command" 0 # unknown option
-            exit 1
-            ;;
+enviroment
+case $MJPG_STREAMER_NAME in
+    *-ov7670)
+        mjpg_streamer -i "input_fifo.so" -o "output_http.so -w $WWW_FILES_PATH" > /dev/null 2>&1 &
+        sleep 1
+        status mjpg_streamer
+        rc=$?
+        wait
+        exit $rc
+        ;;
+    *-webcam)
+        mjpg_streamer -i "input_uvc.so -d /dev/video2 -r 432x240 -f 30" -o "output_http.so -w $WWW_FILES_PATH" > /dev/null 2>&1 &
+        sleep 1
+        status mjpg_streamer
+        rc=$?
+        wait
+        exit $rc
+        ;;
+    *)
+        log "unknown mjpg streamer command" 0 # unknown option
+        exit 1
+        ;;
+esac
 }
 
 do_stop() {
-    start-stop-daemon -Kvx $MJPG_STREAMER_NAME
+    echo -e "#!/bin/sh\n /etc/init.d/$DEFAULT_STREAMER_NAME $VARS reload" > $CURRENT_MJPG_STREAMER_PATH
+    killall -g $CURRENT_MJPG_STREAMER_NAME
 }
 
 case $1 in
     reload)
-        echo -n "Starting  $MJPG_STREAMER_NAME daemon : "
+        echo -n "Reloading  $MJPG_STREAMER_NAME daemon : "
         do_reload
         ;;
     start)
