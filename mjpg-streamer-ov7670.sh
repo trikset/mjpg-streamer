@@ -30,7 +30,7 @@ enviroment () {
 
 do_start() {
   enviroment
-  $MJPG_STREAMER_NAME -i "input_fifo.so" -o "output_http.so -w /www" > /dev/null 2>&1 &
+  $MJPG_STREAMER_NAME -i "input_fifo.so" -o "output_http.so -w /usr/share/mjpg-streamer/www/" > /dev/null 2>&1 &
   sleep 1
   status $MJPG_STREAMER_NAME
   rc=$?
