@@ -20,11 +20,13 @@ MJPG_STREAMER_NAME=$(basename $0)
 [ $MJPG_STREAMER_NAME==*.sh ] && MJPG_STREAMER_NAME=${MJPG_STREAMER_NAME%.*}
 
 MJPG_STREAMER_PATH=/usr/bin
-NAME=mjpg_streamer
+UTILITY_NAME=mjpg_streamer
 MJPG_STREAMER_PRIORITY=-1
 
 MJPG_STREAMER_PIDDIR=/var/run/
-MJPG_STREAMER_PID=$PIDDIR/$NAME.pid
+MJPG_STREAMER_PID=$PIDDIR/$UTILITY_NAME.pid
+
+MJPG_STREAMER_CMD=status
 
 WWW_FILES_PATH=/usr/share/mjpg-streamer/www/
 
@@ -37,29 +39,22 @@ log() {
   fi
 }
 
+
 check_if_debug() {
   [ $VERBOSE_LVL -eq 3 ] && DEBUG=
 }
+
 
 debug() {
   eval $@ $DEBUG
 }
 
 
-. /etc/init.d/functions
-
-test -x $MJPG_STREAMER_PATH/$NAME || exit 0
-
 enviroment () {
     export LD_LIBRARY_PATH=$MJPG_STREAMER_PATH:$LD_LIBRARY_PATH
     cd $MJPG_STREAMER_PATH
 }
 
-do_start() {
-    enviroment
-    echo -e "#!/bin/sh\n /etc/init.d/$MJPG_STREAMER_NAME $VARS $VARS reload" > $CURRENT_MJPG_STREAMER_PATH
-    killall -g $CURRENT_MJPG_STREAMER_NAME
-}
 
 do_reload() {
     enviroment
@@ -78,40 +73,80 @@ do_reload() {
     sleep 1
     status mjpg_streamer || { log "streamer start failed!" 0 ; do_stop; exit 1 ; }
     wait
-
 }
+
+
+do_start() {
+    enviroment
+    echo -e "#!/bin/sh\n /etc/init.d/$MJPG_STREAMER_NAME $VARS reload" > $CURRENT_MJPG_STREAMER_PATH
+    killall -g $CURRENT_MJPG_STREAMER_NAME
+}
+
 
 do_stop() {
     echo -e "#!/bin/sh\n /etc/init.d/$DEFAULT_STREAMER_NAME $VARS reload" > $CURRENT_MJPG_STREAMER_PATH
     killall -g $CURRENT_MJPG_STREAMER_NAME
 }
 
-case $1 in
-    reload)
-        log "Reloading  $MJPG_STREAMER_NAME daemon" 0
-        do_reload
+
+parse_flags() {
+  while [[ $# > 0 ]]
+  do
+    key="$1"
+    case $key in
+      -v|--verbose)
+        VERBOSE_LVL=$2
+        shift
         ;;
-    start)
-        log "Starting  $MJPG_STREAMER_NAME daemon" 0
-        do_start
+      start|stop|restart|reload|status)
+        MJPG_STREAMER_CMD=$key
         ;;
-    stop)
-        log "Stopping $MJPG_STREAMER_NAME daemon" 0
-        do_stop
-        ;;
-    restart)
-        log "Restarting $MJPG_STREAMER_NAME daemon" 0
-        do_stop
-        do_start
-        ;;
-    status)
-        enviroment
-        status $MJPG_STREAMER_NAME
-        exit $?
-        ;;
-    *)
-        echo "Usage: $0 {start|stop|reload|restart|status}"
+      *)
+        log "unknown option: $key" 0
         exit 1
         ;;
-esac
-exit 0
+    esac
+    shift
+  done
+  log "flags parsed" 2
+}
+
+
+do_cmd() {
+  case $MJPG_STREAMER_CMD in
+    start)
+      do_start
+      log "daemon started" 1
+      ;;
+    stop)
+      do_stop
+      log "daemon stoped" 1
+      ;;
+    restart)
+      do_stop
+      do_start
+      log "daemon restarted" 1
+      ;;
+    reload)
+      do_reload
+      log "daemon reloaded" 1
+      ;;
+    status)
+      status $UTILITY_NAME
+      exit $?
+      ;;
+    *)
+      echo "Usage: $MJPG_STREAMER_NAME <flags> {start|stop|restart|status}" 0
+      exit 1
+  esac
+}
+
+
+. /etc/init.d/functions
+
+test -x $MJPG_STREAMER_PATH/$UTILITY_NAME || exit 0
+
+VARS=$*
+parse_flags $@
+check_if_debug
+do_cmd
