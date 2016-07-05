@@ -11,7 +11,7 @@
 ### END INIT INFO
 
 
-DEFAULT_STREAMER_NAME=mjpg-streamer-ov7670.sh
+DEFAULT_STREAMER_NAME=mjpg-streamer-ov7670
 
 CURRENT_MJPG_STREAMER_NAME=current-mjpg-streamer
 CURRENT_MJPG_STREAMER_PATH=/etc/trik/$CURRENT_MJPG_STREAMER_NAME
@@ -28,45 +28,57 @@ MJPG_STREAMER_PID=$PIDDIR/$NAME.pid
 
 WWW_FILES_PATH=/usr/share/mjpg-streamer/www/
 
+VERBOSE_LVL=1
+DEBUG='> /dev/null 2>&1'
+
+log() {
+  if [[ $2 -le $VERBOSE_LVL ]] ; then
+    printf "$MJPG_STREAMER_NAME: $1\n"
+  fi
+}
+
+check_if_debug() {
+  [ $VERBOSE_LVL -eq 3 ] && DEBUG=
+}
+
+debug() {
+  eval $@ $DEBUG
+}
+
+
 . /etc/init.d/functions
 
 test -x $MJPG_STREAMER_PATH/$NAME || exit 0
 
 enviroment () {
-        export LD_LIBRARY_PATH=$MJPG_STREAMER_PATH:$LD_LIBRARY_PATH
-        cd $MJPG_STREAMER_PATH
+    export LD_LIBRARY_PATH=$MJPG_STREAMER_PATH:$LD_LIBRARY_PATH
+    cd $MJPG_STREAMER_PATH
 }
 
 do_start() {
-        enviroment
-        echo -e "#!/bin/sh\n /etc/init.d/$MJPG_STREAMER_NAME $VARS $VARS reload" > $CURRENT_MJPG_STREAMER_PATH
-        killall -g $CURRENT_MJPG_STREAMER_NAME
+    enviroment
+    echo -e "#!/bin/sh\n /etc/init.d/$MJPG_STREAMER_NAME $VARS $VARS reload" > $CURRENT_MJPG_STREAMER_PATH
+    killall -g $CURRENT_MJPG_STREAMER_NAME
 }
 
 do_reload() {
-enviroment
-case $MJPG_STREAMER_NAME in
+    enviroment
+    case $MJPG_STREAMER_NAME in
     *-ov7670)
         mjpg_streamer -i "input_fifo.so" -o "output_http.so -w $WWW_FILES_PATH" > /dev/null 2>&1 &
-        sleep 1
-        status mjpg_streamer
-        rc=$?
-        wait
-        exit $rc
         ;;
     *-webcam)
         mjpg_streamer -i "input_uvc.so -d /dev/video2 -r 432x240 -f 30" -o "output_http.so -w $WWW_FILES_PATH" > /dev/null 2>&1 &
-        sleep 1
-        status mjpg_streamer
-        rc=$?
-        wait
-        exit $rc
         ;;
     *)
         log "unknown mjpg streamer command" 0 # unknown option
         exit 1
         ;;
-esac
+    esac
+    sleep 1
+    status mjpg_streamer || { log "streamer start failed!" 0 ; do_stop; exit 1 ; }
+    wait
+
 }
 
 do_stop() {
@@ -76,19 +88,19 @@ do_stop() {
 
 case $1 in
     reload)
-        echo -n "Reloading  $MJPG_STREAMER_NAME daemon : "
+        log "Reloading  $MJPG_STREAMER_NAME daemon" 0
         do_reload
         ;;
     start)
-        echo -n "Starting  $MJPG_STREAMER_NAME daemon : "
+        log "Starting  $MJPG_STREAMER_NAME daemon" 0
         do_start
         ;;
     stop)
-        echo -n "Stopping $MJPG_STREAMER_NAME daemon: "
+        log "Stopping $MJPG_STREAMER_NAME daemon" 0
         do_stop
         ;;
-    restart|force-reload)
-        echo -n "Restarting $MJPG_STREAMER_NAME daemon: "
+    restart)
+        log "Restarting $MJPG_STREAMER_NAME daemon" 0
         do_stop
         do_start
         ;;
@@ -98,7 +110,7 @@ case $1 in
         exit $?
         ;;
     *)
-        echo "Usage: $0 {start|stop|force-reload|restart|status}"
+        echo "Usage: $0 {start|stop|reload|restart|status}"
         exit 1
         ;;
 esac
