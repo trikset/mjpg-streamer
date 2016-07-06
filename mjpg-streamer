@@ -1,0 +1,152 @@
+#!/bin/sh
+
+### BEGIN INIT INFO
+# Provides:          app
+# Required-Start:    
+# Required-Stop:     
+# Should-Start:      
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: start App MJPG_STREAMER
+### END INIT INFO
+
+
+DEFAULT_STREAMER_NAME=mjpg-streamer-ov7670
+
+CURRENT_MJPG_STREAMER_NAME=current-mjpg-streamer
+CURRENT_MJPG_STREAMER_PATH=/etc/trik/$CURRENT_MJPG_STREAMER_NAME
+
+MJPG_STREAMER_NAME=$(basename $0)
+[ $MJPG_STREAMER_NAME==*.sh ] && MJPG_STREAMER_NAME=${MJPG_STREAMER_NAME%.*}
+
+MJPG_STREAMER_PATH=/usr/bin
+UTILITY_NAME=mjpg_streamer
+MJPG_STREAMER_PRIORITY=-1
+
+MJPG_STREAMER_PIDDIR=/var/run/
+MJPG_STREAMER_PID=$PIDDIR/$UTILITY_NAME.pid
+
+MJPG_STREAMER_CMD=status
+
+WWW_FILES_PATH=/usr/share/mjpg-streamer/www/
+
+VERBOSE_LVL=1
+DEBUG='> /dev/null 2>&1'
+
+log() {
+  if [[ $2 -le $VERBOSE_LVL ]] ; then
+    printf "$MJPG_STREAMER_NAME: $1\n"
+  fi
+}
+
+
+check_if_debug() {
+  [ $VERBOSE_LVL -eq 3 ] && DEBUG=
+}
+
+
+debug() {
+  eval $@ $DEBUG
+}
+
+
+enviroment () {
+    export LD_LIBRARY_PATH=$MJPG_STREAMER_PATH:$LD_LIBRARY_PATH
+    cd $MJPG_STREAMER_PATH
+}
+
+
+do_reload() {
+    enviroment
+    case $MJPG_STREAMER_NAME in
+    *-ov7670)
+        mjpg_streamer -i "input_fifo.so" -o "output_http.so -w $WWW_FILES_PATH" > /dev/null 2>&1 &
+        ;;
+    *-webcam)
+        mjpg_streamer -i "input_uvc.so -d /dev/video2 -r 432x240 -f 30" -o "output_http.so -w $WWW_FILES_PATH" > /dev/null 2>&1 &
+        ;;
+    *)
+        log "unknown mjpg streamer command" 0 # unknown option
+        exit 1
+        ;;
+    esac
+    sleep 1
+    status mjpg_streamer || { log "streamer start failed!" 0 ; do_stop; exit 1 ; }
+    wait
+}
+
+
+do_start() {
+    enviroment
+    echo -e "#!/bin/sh\n /etc/init.d/$MJPG_STREAMER_NAME $VARS reload" > $CURRENT_MJPG_STREAMER_PATH
+    killall -g $CURRENT_MJPG_STREAMER_NAME
+}
+
+
+do_stop() {
+    echo -e "#!/bin/sh\n /etc/init.d/$DEFAULT_STREAMER_NAME $VARS reload" > $CURRENT_MJPG_STREAMER_PATH
+    killall -g $CURRENT_MJPG_STREAMER_NAME
+}
+
+
+parse_flags() {
+  while [[ $# > 0 ]]
+  do
+    key="$1"
+    case $key in
+      -v|--verbose)
+        VERBOSE_LVL=$2
+        shift
+        ;;
+      start|stop|restart|reload|status)
+        MJPG_STREAMER_CMD=$key
+        ;;
+      *)
+        log "unknown option: $key" 0
+        exit 1
+        ;;
+    esac
+    shift
+  done
+  log "flags parsed" 2
+}
+
+
+do_cmd() {
+  case $MJPG_STREAMER_CMD in
+    start)
+      do_start
+      log "daemon started" 1
+      ;;
+    stop)
+      do_stop
+      log "daemon stoped" 1
+      ;;
+    restart)
+      do_stop
+      do_start
+      log "daemon restarted" 1
+      ;;
+    reload)
+      do_reload
+      log "daemon reloaded" 1
+      ;;
+    status)
+      status $UTILITY_NAME
+      exit $?
+      ;;
+    *)
+      echo "Usage: $MJPG_STREAMER_NAME <flags> {start|stop|restart|status}" 0
+      exit 1
+  esac
+}
+
+
+. /etc/init.d/functions
+
+test -x $MJPG_STREAMER_PATH/$UTILITY_NAME || exit 0
+
+VARS=$*
+parse_flags $@
+check_if_debug
+do_cmd
