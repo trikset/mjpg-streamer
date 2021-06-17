@@ -28,6 +28,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/time.h>
 #include <errno.h>
 #include <signal.h>
 #include <sys/socket.h>
@@ -70,6 +71,11 @@ static globals *pglobal;
 static unsigned int minimum_size = 0;
 static int dynctrls = 1;
 static unsigned int every = 1;
+static int wantTimestamp = 0;
+static struct timeval timestamp;
+static int softfps = -1;
+static unsigned int timeout = 5;
+static unsigned int dv_timings = 0;
 
 static const struct {
   const char * k;
@@ -97,7 +103,7 @@ int input_cmd(int plugin, unsigned int control, unsigned int group, int value, c
 
 const char *get_name_by_tvnorm(v4l2_std_id vstd) {
 	int i;
-	for (i=0;i<sizeof(norms);i++) {
+	for (i=0;i<sizeof(norms)/sizeof(norms[0]);i++) {
 		if (vstd == norms[i].vstd) {
 			return norms[i].string;
 		}
@@ -121,7 +127,7 @@ static context_settings * init_settings() {
 
 /*** plugin interface functions ***/
 /******************************************************************************
-Description.: This function ializes the plugin. It parses the commandline-
+Description.: This function initializes the plugin. It parses the commandline-
               parameter and stores the default and parsed values in the
               appropriate variables.
 Input Value.: param contains among others the command-line string
@@ -175,6 +181,8 @@ int input_init(input_parameter *param, int id)
             {"fps", required_argument, 0, 0},
             {"y", no_argument, 0, 0},
             {"yuv", no_argument, 0, 0},
+            {"u", no_argument, 0, 0},
+            {"uyvy", no_argument, 0, 0},
             {"q", required_argument, 0, 0},
             {"quality", required_argument, 0, 0},
             {"m", required_argument, 0, 0},
@@ -185,7 +193,7 @@ int input_init(input_parameter *param, int id)
             {"led", required_argument, 0, 0},
             {"fourcc", required_argument, 0, 0},
             {"t", required_argument, 0, 0 },
-	        {"tvnorm", required_argument, 0, 0 },
+            {"tvnorm", required_argument, 0, 0 },
             {"e", required_argument, 0, 0},
             {"every_frame", required_argument, 0, 0},
             {"sh", required_argument, 0, 0},
@@ -202,6 +210,10 @@ int input_init(input_parameter *param, int id)
             {"gain", required_argument, 0, 0},
             {"cagc", required_argument, 0, 0},
             {"cb", required_argument, 0, 0},
+            {"timestamp", no_argument, 0, 0},
+            {"softfps", required_argument, 0, 0},
+            {"timeout", required_argument, 0, 0},
+            {"dv_timings", no_argument, 0, 0},
             {0, 0, 0, 0}
         };
 
@@ -231,7 +243,7 @@ int input_init(input_parameter *param, int id)
         case 2:
         case 3:
             DBG("case 2,3\n");
-            dev = canonicalize_file_name(optarg);
+            dev = realpath(optarg, NULL);
             break;
 
         /* r, resolution */
@@ -256,31 +268,39 @@ int input_init(input_parameter *param, int id)
             format = V4L2_PIX_FMT_YUYV;
             break;
         #endif
-        /* q, quality */
+	/* u, uyvy */
         #ifndef NO_LIBJPEG
         case 10:
-        OPTION_INT(11, quality)
+        case 11:
+            DBG("case 10,11\n");
+            format = V4L2_PIX_FMT_UYVY;
+            break;
+        #endif
+        /* q, quality */
+        #ifndef NO_LIBJPEG
+        case 12:
+        OPTION_INT(13, quality)
             settings->quality = MIN(MAX(settings->quality, 0), 100);
             break;
         #endif
         /* m, minimum_size */
-        case 12:
-        case 13:
-            DBG("case 12,13\n");
+        case 14:
+        case 15:
+            DBG("case 14,15\n");
             minimum_size = MAX(atoi(optarg), 0);
             break;
 
         /* n, no_dynctrl */
-        case 14:
-        case 15:
-            DBG("case 14,15\n");
+        case 16:
+        case 17:
+            DBG("case 16,17\n");
             dynctrls = 0;
             break;
 
             /* l, led */
-        case 16:
-        case 17:/*
-        DBG("case 16,17\n");
+        case 18:
+        case 19:/*
+        DBG("case 18,19\n");
         if ( strcmp("on", optarg) == 0 ) {
           led = IN_CMD_LED_ON;
         } else if ( strcmp("off", optarg) == 0 ) {
@@ -293,19 +313,21 @@ int input_init(input_parameter *param, int id)
             break;
         /* fourcc */
         #ifndef NO_LIBJPEG
-        case 18:
-            DBG("case 18,19\n");
-            if (strcmp(optarg, "RGBP") == 0) {
+        case 20:
+            DBG("case 20\n");
+            if (strcmp(optarg, "RGB24") == 0) {
+                format = V4L2_PIX_FMT_RGB24;
+            } else if (strcmp(optarg, "RGBP") == 0) {
                 format = V4L2_PIX_FMT_RGB565;
             } else {
-                DBG("FOURCC %s not supported\n", optarg);
+              fprintf(stderr," i: FOURCC codec '%s' not supported\n", optarg);
             }
             break;
         #endif
         /* t, tvnorm */
-        case 19:
-        case 20:
-            DBG("case 19,20\n");
+        case 21:
+        case 22:
+            DBG("case 21,22\n");
             if (strcasecmp("pal",optarg) == 0 ) {
 	             tvnorm = V4L2_STD_PAL;
             } else if ( strcasecmp("ntsc",optarg) == 0 ) {
@@ -314,48 +336,61 @@ int input_init(input_parameter *param, int id)
 	             tvnorm = V4L2_STD_SECAM;
             }
             break;
-        case 21:
+        case 23:
         /* e, every */
-        case 22:
-            DBG("case 21,22\n");
+        case 24:
+            DBG("case 24\n");
             every = MAX(atoi(optarg), 1);
             break;
 
         /* options */
-        OPTION_INT(23, sh)
+        OPTION_INT(25, sh)
             break;
-        OPTION_INT(24, co)
+        OPTION_INT(26, co)
             break;
-        OPTION_INT_AUTO(25, br)
+        OPTION_INT_AUTO(27, br)
             break;
-        OPTION_INT(26, sa)
+        OPTION_INT(28, sa)
             break;
-        OPTION_INT_AUTO(27, wb)
+        OPTION_INT_AUTO(29, wb)
             break;
-        OPTION_MULTI_OR_INT(28, ex_auto, V4L2_EXPOSURE_MANUAL, ex, exposures)
+        OPTION_MULTI_OR_INT(30, ex_auto, V4L2_EXPOSURE_MANUAL, ex, exposures)
             break;
-        OPTION_INT(29, bk)
+        OPTION_INT(31, bk)
             break;
-        OPTION_INT(30, rot)
+        OPTION_INT(32, rot)
             break;
-        OPTION_BOOL(31, hf)
+        OPTION_BOOL(33, hf)
             break;
-        OPTION_BOOL(32, vf)
+        OPTION_BOOL(34, vf)
             break;
-        OPTION_MULTI(33, pl, power_line)
+        OPTION_MULTI(35, pl, power_line)
             break;
-        OPTION_INT_AUTO(34, gain)
+        OPTION_INT_AUTO(36, gain)
             break;
-        OPTION_INT_AUTO(35, cagc)
+        OPTION_INT_AUTO(37, cagc)
             break;
-        OPTION_INT_AUTO(36, cb)
+        OPTION_INT_AUTO(38, cb)
             break;
-    
-        default:
-            DBG("default case\n");
-            help();
-            return 1;
-        }
+        case 39:
+            wantTimestamp = 1;
+            break;
+       case 40:
+           softfps = atoi(optarg);
+           break;
+        case 41:
+            DBG("case 41\n");
+            timeout = MAX(atoi(optarg), 1);
+            break;
+        case 42:
+            DBG("case 42\n");
+            dv_timings = 1;
+            break;
+       default:
+           DBG("default case\n");
+           help();
+           return 1;
+      }
     }
     DBG("input id: %d\n", id);
     pctx->id = id;
@@ -375,12 +410,20 @@ int input_init(input_parameter *param, int id)
     char *fmtString = NULL;
     switch (format) {
         case V4L2_PIX_FMT_MJPEG:
+            // Fall-through intentional
+        case V4L2_PIX_FMT_JPEG:
             fmtString = "JPEG";
             break;
-        #ifndef NI_LIBJPG
+        #ifndef NO_LIBJPG
             case V4L2_PIX_FMT_YUYV:
                 fmtString = "YUYV";
                 break;
+            case V4L2_PIX_FMT_UYVY:
+                fmtString = "UYVY";
+                break;
+            case V4L2_PIX_FMT_RGB24:
+                fmtString = "RGB24";
+		break;
             case V4L2_PIX_FMT_RGB565:
                 fmtString = "RGB565";
                 break;
@@ -391,7 +434,7 @@ int input_init(input_parameter *param, int id)
 
     IPRINT("Format............: %s\n", fmtString);
     #ifndef NO_LIBJPEG
-        if(format != V4L2_PIX_FMT_MJPEG)
+        if(format != V4L2_PIX_FMT_MJPEG && format != V4L2_PIX_FMT_JPEG)
             IPRINT("JPEG Quality......: %d\n", settings->quality);
     #endif
 
@@ -403,11 +446,17 @@ int input_init(input_parameter *param, int id)
 
     DBG("vdIn pn: %d\n", id);
     /* open video device and prepare data structure */
+    pctx->videoIn->dv_timings = dv_timings;
     if(init_videoIn(pctx->videoIn, dev, width, height, fps, format, 1, pctx->pglobal, id, tvnorm) < 0) {
         IPRINT("init_VideoIn failed\n");
         closelog();
         exit(EXIT_FAILURE);
     }
+
+    if (softfps > 0) {
+        IPRINT("Framedrop FPS.....: %d\n", softfps);
+    }
+
     /*
      * recent linux-uvc driver (revision > ~#125) requires to use dynctrls
      * for pan/tilt/focus/...
@@ -482,7 +531,7 @@ void help(void)
 
     fprintf(stderr,
     " [-f | --fps ]..........: frames per second\n" \
-    "                          (activates YUYV format, disables MJPEG)\n" \
+    "                          (camera may coerce to different value)\n" \
     " [-q | --quality ] .....: set quality of JPEG encoding\n" \
     " [-m | --minimum_size ].: drop frames smaller then this limit, useful\n" \
     "                          if the webcam produces small-sized garbage frames\n" \
@@ -491,11 +540,20 @@ void help(void)
     " [-n | --no_dynctrl ]...: do not initalize dynctrls of Linux-UVC driver\n" \
     " [-l | --led ]..........: switch the LED \"on\", \"off\", let it \"blink\" or leave\n" \
     "                          it up to the driver using the value \"auto\"\n" \
-    " [-t | --tvnorm ] ......: set TV-Norm pal, ntsc or secam\n"
+    " [-t | --tvnorm ] ......: set TV-Norm pal, ntsc or secam\n" \
+    " [-u | --uyvy ] ........: Use UYVY format, default: MJPEG (uses more cpu power)\n" \
+    " [-y | --yuv  ] ........: Use YUV format, default: MJPEG (uses more cpu power)\n" \
+    " [-fourcc ] ............: Use FOURCC codec 'argopt', \n" \
+    "                          currently supported codecs are: RGB24, RGBP \n" \
+    " [-timestamp ]..........: Populate frame timestamp with system time\n" \
+    " [-softfps] ............: Drop frames to try and achieve this fps\n" \
+    "                          set your camera to its maximum fps to avoid stuttering\n" \
+    " [-timeout] ............: Timeout for device querying (seconds)\n" \
+    " [-dv_timings] .........: Enable DV timings queriyng and events processing\n" \
     " ---------------------------------------------------------------\n");
 
     fprintf(stderr, "\n"\
-    " Optional parameters (may not be supported by all cameras):\n\n"
+    " Optional parameters (may not be supported by all cameras):\n\n"\
     " [-br ].................: Set image brightness (auto or integer)\n"\
     " [-co ].................: Set image contrast (integer)\n"\
     " [-sh ].................: Set image sharpness (integer)\n"\
@@ -604,92 +662,170 @@ void *cam_thread(void *arg)
     settings = NULL;
     pcontext->init_settings = NULL;
 
+    if (softfps > 0) {
+        pcontext->videoIn->soft_framedrop = 1;
+        pcontext->videoIn->frame_period_time = 1000/softfps;
+    }
+
+    if (video_enable(pcontext->videoIn)) {
+        IPRINT("Can\'t enable video in first time\n");
+        goto endloop;
+    }
+
     while(!pglobal->stop) {
         while(pcontext->videoIn->streamingState == STREAMING_PAUSED) {
             usleep(1); // maybe not the best way so FIXME
         }
 
-        /* grab a frame */
-        if(uvcGrab(pcontext->videoIn) < 0) {
-            IPRINT("Error grabbing frames\n");
-            exit(EXIT_FAILURE);
-        }
+        fd_set rd_fds; // for capture
+        fd_set ex_fds; // for capture
+        fd_set wr_fds; // for output
 
-        if ( every_count < every - 1 ) {
-            DBG("dropping %d frame for every=%d\n", every_count + 1, every);
-            ++every_count;
-            continue;
-        } else {
-            every_count = 0;
-        }
+        FD_ZERO(&rd_fds);
+        FD_SET(pcontext->videoIn->fd, &rd_fds);
 
-        //DBG("received frame of size: %d from plugin: %d\n", pcontext->videoIn->tmpbytesused, pcontext->id);
+        FD_ZERO(&ex_fds);
+        FD_SET(pcontext->videoIn->fd, &ex_fds);
 
-        /*
-         * Workaround for broken, corrupted frames:
-         * Under low light conditions corrupted frames may get captured.
-         * The good thing is such frames are quite small compared to the regular pictures.
-         * For example a VGA (640x480) webcam picture is normally >= 8kByte large,
-         * corrupted frames are smaller.
-         */
-        if(pcontext->videoIn->tmpbytesused < minimum_size) {
-            DBG("dropping too small frame, assuming it as broken\n");
-            continue;
-        }
+        FD_ZERO(&wr_fds);
+        FD_SET(pcontext->videoIn->fd, &wr_fds);
 
-        // use software frame dropping on low fps
-        if (pcontext->videoIn->soft_framedrop == 1) {
-            unsigned long last = pglobal->in[pcontext->id].timestamp.tv_sec * 1000 +
-                                (pglobal->in[pcontext->id].timestamp.tv_usec/1000); // convert to ms
-            unsigned long current = pcontext->videoIn->buf.timestamp.tv_sec * 1000 +
-                                    pcontext->videoIn->buf.timestamp.tv_usec/1000; // convert to ms
+        struct timeval tv;
+        tv.tv_sec = timeout;
+        tv.tv_usec = 0;
 
-            // if the requested time did not esplashed skip the frame
-            if ((current - last) < pcontext->videoIn->frame_period_time) {
-                //DBG("Last frame taken %d ms ago so drop it\n", (current - last));
+        int sel = select(pcontext->videoIn->fd + 1, &rd_fds, &wr_fds, &ex_fds, &tv);
+        DBG("select() = %d\n", sel);
+
+        if (sel < 0) {
+            if (errno == EINTR) {
                 continue;
             }
-            DBG("Lagg: %ld\n", (current - last) - pcontext->videoIn->frame_period_time);
+            perror("select() error");
+            goto endloop;
+        } else if (sel == 0) {
+            IPRINT("select() timeout\n");
+            if (dv_timings) {
+                if (setResolution(pcontext->videoIn, pcontext->videoIn->width, pcontext->videoIn->height) < 0) {
+                    goto endloop;
+                }
+                continue;
+            } else {
+                goto endloop;
+            }
         }
 
-        /* copy JPG picture to global buffer */
-        pthread_mutex_lock(&pglobal->in[pcontext->id].db);
+        if (FD_ISSET(pcontext->videoIn->fd, &rd_fds)) {
+            DBG("Grabbing a frame...\n");
+            /* grab a frame */
+            if(uvcGrab(pcontext->videoIn) < 0) {
+                IPRINT("Error grabbing frames\n");
+                goto endloop;
+            }
 
-        /*
-         * If capturing in YUV mode convert to JPEG now.
-         * This compression requires many CPU cycles, so try to avoid YUV format.
-         * Getting JPEGs straight from the webcam, is one of the major advantages of
-         * Linux-UVC compatible devices.
-         */
-        #ifndef NO_LIBJPEG
-        if ((pcontext->videoIn->formatIn == V4L2_PIX_FMT_YUYV) || (pcontext->videoIn->formatIn == V4L2_PIX_FMT_RGB565)) {
-            DBG("compressing frame from input: %d\n", (int)pcontext->id);
-            pglobal->in[pcontext->id].size = compress_image_to_jpeg(pcontext->videoIn, pglobal->in[pcontext->id].buf, pcontext->videoIn->framesizeIn, quality);
-            /* copy this frame's timestamp to user space */
-            pglobal->in[pcontext->id].timestamp = pcontext->videoIn->buf.timestamp;
-        } else {
-        #endif
-            DBG("copying frame from input: %d\n", (int)pcontext->id);
-            pglobal->in[pcontext->id].size = memcpy_picture(pglobal->in[pcontext->id].buf, pcontext->videoIn->tmpbuffer, pcontext->videoIn->tmpbytesused);
-            /* copy this frame's timestamp to user space */
-            pglobal->in[pcontext->id].timestamp = pcontext->videoIn->tmptimestamp;
-        #ifndef NO_LIBJPEG
-        }
-        #endif
+            if ( every_count < every - 1 ) {
+                DBG("dropping %d frame for every=%d\n", every_count + 1, every);
+                ++every_count;
+                goto other_select_handlers;
+            } else {
+                every_count = 0;
+            }
+
+            //DBG("received frame of size: %d from plugin: %d\n", pcontext->videoIn->tmpbytesused, pcontext->id);
+
+            /*
+             * Workaround for broken, corrupted frames:
+             * Under low light conditions corrupted frames may get captured.
+             * The good thing is such frames are quite small compared to the regular pictures.
+             * For example a VGA (640x480) webcam picture is normally >= 8kByte large,
+             * corrupted frames are smaller.
+             */
+            if(pcontext->videoIn->tmpbytesused < minimum_size) {
+                DBG("dropping too small frame, assuming it as broken\n");
+                goto other_select_handlers;
+            }
+
+            // Overwrite timestamp (e.g. where camera is providing 0 values)
+            // Do it here so that this timestamp can be used in frameskipping
+            if(wantTimestamp)
+            {
+                gettimeofday(&timestamp, NULL);
+                pcontext->videoIn->tmptimestamp = timestamp;
+            }
+
+            // use software frame dropping on low fps
+            if (pcontext->videoIn->soft_framedrop == 1) {
+                unsigned long last = pglobal->in[pcontext->id].timestamp.tv_sec * 1000 +
+                                    (pglobal->in[pcontext->id].timestamp.tv_usec/1000); // convert to ms
+                unsigned long current = pcontext->videoIn->tmptimestamp.tv_sec * 1000 +
+                                        pcontext->videoIn->tmptimestamp.tv_usec/1000; // convert to ms
+
+                // if the requested time did not esplashed skip the frame
+                if ((current - last) < pcontext->videoIn->frame_period_time) {
+                    DBG("Last frame taken %d ms ago so drop it\n", (current - last));
+                    goto other_select_handlers;
+                }
+                DBG("Lagg: %ld\n", (current - last) - pcontext->videoIn->frame_period_time);
+            }
+
+            /* copy JPG picture to global buffer */
+            pthread_mutex_lock(&pglobal->in[pcontext->id].db);
+
+            /*
+             * If capturing in YUV mode convert to JPEG now.
+             * This compression requires many CPU cycles, so try to avoid YUV format.
+             * Getting JPEGs straight from the webcam, is one of the major advantages of
+             * Linux-UVC compatible devices.
+             */
+            #ifndef NO_LIBJPEG
+            if ((pcontext->videoIn->formatIn == V4L2_PIX_FMT_YUYV) ||
+            (pcontext->videoIn->formatIn == V4L2_PIX_FMT_UYVY) ||
+            (pcontext->videoIn->formatIn == V4L2_PIX_FMT_RGB24) ||
+            (pcontext->videoIn->formatIn == V4L2_PIX_FMT_RGB565) ) {
+                DBG("compressing frame from input: %d\n", (int)pcontext->id);
+                pglobal->in[pcontext->id].size = compress_image_to_jpeg(pcontext->videoIn, pglobal->in[pcontext->id].buf, pcontext->videoIn->framesizeIn, quality);
+                /* copy this frame's timestamp to user space */
+                pglobal->in[pcontext->id].timestamp = pcontext->videoIn->tmptimestamp;
+            } else {
+            #endif
+                DBG("copying frame from input: %d\n", (int)pcontext->id);
+                pglobal->in[pcontext->id].size = memcpy_picture(pglobal->in[pcontext->id].buf, pcontext->videoIn->tmpbuffer, pcontext->videoIn->tmpbytesused);
+                /* copy this frame's timestamp to user space */
+                pglobal->in[pcontext->id].timestamp = pcontext->videoIn->tmptimestamp;
+            #ifndef NO_LIBJPEG
+            }
+            #endif
 
 #if 0
-        /* motion detection can be done just by comparing the picture size, but it is not very accurate!! */
-        if((prev_size - global->size)*(prev_size - global->size) > 4 * 1024 * 1024) {
-            DBG("motion detected (delta: %d kB)\n", (prev_size - global->size) / 1024);
-        }
-        prev_size = global->size;
+            /* motion detection can be done just by comparing the picture size, but it is not very accurate!! */
+            if((prev_size - global->size)*(prev_size - global->size) > 4 * 1024 * 1024) {
+                DBG("motion detected (delta: %d kB)\n", (prev_size - global->size) / 1024);
+            }
+            prev_size = global->size;
 #endif
 
+            /* signal fresh_frame */
+            pthread_cond_broadcast(&pglobal->in[pcontext->id].db_update);
+            pthread_mutex_unlock(&pglobal->in[pcontext->id].db);
+        }
 
-        /* signal fresh_frame */
-        pthread_cond_broadcast(&pglobal->in[pcontext->id].db_update);
-        pthread_mutex_unlock(&pglobal->in[pcontext->id].db);
+other_select_handlers:
+
+        if (dv_timings) {
+            if (FD_ISSET(pcontext->videoIn->fd, &wr_fds)) {
+                IPRINT("Writing?!\n");
+            }
+
+            if (FD_ISSET(pcontext->videoIn->fd, &ex_fds)) {
+                IPRINT("FD exception\n");
+                if (video_handle_event(pcontext->videoIn) < 0) {
+                    goto endloop;
+                }
+            }
+        }
     }
+
+endloop:
 
     DBG("leaving input thread, calling cleanup function now\n");
     pthread_cleanup_pop(1);

@@ -39,15 +39,22 @@ Output plugins:
 
 * output_file
 * output_http ([documentation](mjpg-streamer-experimental/plugins/output_http/README.md))
-* output_rtsp
-* output_udp
+* ~output_rtsp~ (not functional)
+* ~output_udp~ (not functional)
 * output_viewer ([documentation](mjpg-streamer-experimental/plugins/output_viewer/README.md))
+* output_zmqserver ([documentation](mjpg-streamer-experimental/plugins/output_zmqserver/README.md))
 
 Building & Installation
 =======================
 
 You must have cmake installed. You will also probably want to have a development
-version of libjpeg installed. I used libjpeg62-dev.
+version of libjpeg installed. I used libjpeg8-dev. e.g.
+
+    sudo apt-get install cmake libjpeg8-dev
+
+If you do not have gcc (and g++ for the opencv plugin) you may need to install those.
+
+    sudo apt-get install gcc g++
 
 Simple compilation
 ------------------
@@ -62,6 +69,7 @@ By default, everything will be compiled in "release" mode. If you wish to compil
 with debugging symbols enabled, you can do this:
 
     cd mjpg-streamer-experimental
+    make distclean
     make CMAKE_BUILD_TYPE=Debug
     sudo make install
     
@@ -69,12 +77,12 @@ Advanced compilation (via CMake)
 --------------------------------
 
 There are options available to enable/disable plugins, setup options, etc. This
-shows the basic steps.
+shows the basic steps to enable the experimental HTTP management feature:
 
     cd mjpg-streamer-experimental
     mkdir _build
     cd _build
-    cmake ..
+    cmake -DENABLE_HTTP_MANAGEMENT=ON ..
     make
     sudo make install
 
@@ -89,6 +97,11 @@ export LD_LIBRARY_PATH=.
 
 See [README.md](mjpg-streamer-experimental/README.md) or the individual plugin's documentation for more details.
 
+Discussion / Questions / Help
+=============================
+
+Probably best in this thread
+http://www.raspberrypi.org/phpBB3/viewtopic.php?f=43&t=45178
 
 Authors
 =======

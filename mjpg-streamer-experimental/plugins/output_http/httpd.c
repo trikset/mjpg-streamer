@@ -33,7 +33,6 @@
 #include <arpa/inet.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <syslog.h>
 #include <netdb.h>
 #include <errno.h>
 #include <limits.h>
@@ -435,6 +434,7 @@ void send_snapshot(cfd *context_fd, int input_number)
 
     /* write the response */
     sprintf(buffer, "HTTP/1.0 200 OK\r\n" \
+            "Access-Control-Allow-Origin: *\r\n" \
             STD_HEADER \
             "Content-type: image/jpeg\r\n" \
             "X-Timestamp: %d.%06d\r\n" \
@@ -835,15 +835,23 @@ void execute_cgi(int id, int fd, char *parameter, char *query_string)
     if(f == NULL) {
         DBG("Unable to execute the requested CGI script\n");
         send_error(fd, 403, "CGI script cannot be executed");
+        free(buffer);
+        close(lfd);
         return;
     }
 
     while((i = fread(buffer, 1, sizeof(buffer), f)) > 0) {
         if (write(fd, buffer, i) < 0) {
             fclose(f);
+            free(buffer);
+            close(lfd);
             return;
         }
     }
+
+    fclose(f);
+    free(buffer);
+    close(lfd);
 }
 
 
@@ -1222,6 +1230,7 @@ void *client_thread(void *arg)
                 req.query_string = malloc(len + 1);
                 if (req.query_string == NULL)
                     exit(EXIT_FAILURE);
+                memset(req.query_string, 0, len + 1);
                 strncpy(req.query_string, pb, len);
             } else {
                 req.query_string = malloc(2);
@@ -1465,7 +1474,7 @@ void *server_thread(void *arg)
     hints.ai_socktype = SOCK_STREAM;
 
     snprintf(name, sizeof(name), "%d", ntohs(pcontext->conf.port));
-    if((err = getaddrinfo(NULL, name, &hints, &aip)) != 0) {
+    if((err = getaddrinfo(pcontext->conf.hostname, name, &hints, &aip)) != 0) {
         perror(gai_strerror(err));
         exit(EXIT_FAILURE);
     }
@@ -1574,7 +1583,6 @@ void *server_thread(void *arg)
                 DBG("create thread to handle client that just established a connection\n");
 
                 if(getnameinfo((struct sockaddr *)&client_addr, addr_len, name, sizeof(name), NULL, 0, NI_NUMERICHOST) == 0) {
-                    syslog(LOG_INFO, "serving client: %s\n", name);
                     DBG("serving client: %s\n", name);
                 }
 

@@ -131,12 +131,6 @@ int input_run(int id)
 {
 	int res, i;
 
-	global->in[id].buf = malloc(256 * 1024);
-	if(global->in[id].buf == NULL)
-	{
-		IPRINT(INPUT_PLUGIN_NAME " - could not allocate memory\n");
-		exit(EXIT_FAILURE);
-	}
 	plugin_id = id;
 
 	// auto-detect algorithm
@@ -229,46 +223,67 @@ void* capture(void* arg)
 	int i = 0;
 	CameraFile* file;
 
+	int jpeg_buffer_size = 256 * 1024;
+	global->in[plugin_id].buf = malloc(jpeg_buffer_size);
+	if(global->in[plugin_id].buf == NULL)
+	{
+		IPRINT(INPUT_PLUGIN_NAME " - could not allocate memory\n");
+		return NULL;
+	}
+
 	pthread_cleanup_push(cleanup, NULL);
-					while(!global->stop)
-					{
-						unsigned long int xsize;
-						const char* xdata;
-						pthread_mutex_lock(&control_mutex);
-						res = gp_file_new(&file);
-						CAMERA_CHECK_GP(res, "gp_file_new");
-						res = gp_camera_capture_preview(camera, file, context);
-						CAMERA_CHECK_GP(res, "gp_camera_capture_preview");
-						pthread_mutex_lock(&global->in[plugin_id].db);
-						res = gp_file_get_data_and_size(file, &xdata, &xsize);
-						if(xsize == 0)
-						{
-							if(i++ > 3)
-							{
-								IPRINT("Restarted too many times; giving up\n");
-								return NULL;
-							}
-							int value = 0;
-							IPRINT("Read 0 bytes from camera; restarting it\n");
-							camera_set("capture", &value);
-							sleep(3);
-							value = 1;
-							camera_set("capture", &value);
-						}
-						else
-							i = 0;
-						CAMERA_CHECK_GP(res, "gp_file_get_data_and_size");
-						memcpy(global->in[plugin_id].buf, xdata, xsize);
-						res = gp_file_unref(file);
-						pthread_mutex_unlock(&control_mutex);
-						CAMERA_CHECK_GP(res, "gp_file_unref");
-						global->in[plugin_id].size = xsize;
-						DBG("Read %d bytes from camera.\n", global->in[plugin_id].size);
-						pthread_cond_broadcast(&global->in[plugin_id].db_update);
-						pthread_mutex_unlock(&global->in[plugin_id].db);
-						usleep(delay);
-					}
-					pthread_cleanup_pop(1);
+	while(!global->stop)
+	{
+		unsigned long int xsize;
+		const char* xdata;
+		pthread_mutex_lock(&control_mutex);
+		res = gp_file_new(&file);
+		CAMERA_CHECK_GP(res, "gp_file_new");
+		res = gp_camera_capture_preview(camera, file, context);
+		CAMERA_CHECK_GP(res, "gp_camera_capture_preview");
+		pthread_mutex_lock(&global->in[plugin_id].db);
+		res = gp_file_get_data_and_size(file, &xdata, &xsize);
+		if(xsize == 0)
+		{
+			if(i++ > 3)
+			{
+				IPRINT("Restarted too many times; giving up\n");
+				return NULL;
+			}
+			int value = 0;
+			IPRINT("Read 0 bytes from camera; restarting it\n");
+			camera_set("capture", &value);
+			sleep(3);
+			value = 1;
+			camera_set("capture", &value);
+		}
+		else
+			i = 0;
+		CAMERA_CHECK_GP(res, "gp_file_get_data_and_size");
+
+		if(jpeg_buffer_size <= xsize) {
+			jpeg_buffer_size = xsize + xsize * 10/100;
+			unsigned char *tmp_buff = realloc(global->in[plugin_id].buf,jpeg_buffer_size);
+			if(tmp_buff == NULL)
+			{
+				IPRINT(INPUT_PLUGIN_NAME " - could not allocate memory\n");
+				return NULL;
+			}
+			global->in[plugin_id].buf = tmp_buff;
+		}
+
+
+		memcpy(global->in[plugin_id].buf, xdata, xsize);
+		res = gp_file_unref(file);
+		pthread_mutex_unlock(&control_mutex);
+		CAMERA_CHECK_GP(res, "gp_file_unref");
+		global->in[plugin_id].size = xsize;
+		DBG("Read %d bytes from camera.\n", global->in[plugin_id].size);
+		pthread_cond_broadcast(&global->in[plugin_id].db_update);
+		pthread_mutex_unlock(&global->in[plugin_id].db);
+		usleep(delay);
+	}
+	pthread_cleanup_pop(1);
 
 	return NULL;
 }
